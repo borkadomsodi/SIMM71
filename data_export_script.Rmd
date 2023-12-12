@@ -1,0 +1,99 @@
+---
+title: "simm71_data_export_script"
+author: "Borka Domsodi"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(message=FALSE)
+setwd("~/Documents/2_Lund/8_SIMM71_Computational Content Analysis for the Social Sciences/1st_assignment/1_data")
+
+library(RedditExtractoR)
+library(tidyverse)
+library(stringr)
+library(stringi)
+library(tidytext)
+library(rio)
+library(writexl)
+library(readxl)
+library(anytime)
+```
+
+## GET DATA ##
+
+```{r}
+# Find thread URLs for the subreddit r/EatingDisorders for the past 1 year
+eatingdisorders <- find_thread_urls(subreddit = "EatingDisorders", period = "year")
+
+# Clean the data frame (delete rownames)
+rownames(eatingdisorders) <- NULL
+
+# Remove 1st row
+eatingdisorders <- eatingdisorders[-1,]
+
+# Save data
+data <- eatingdisorders
+```
+
+## DRAW SAMPLE ##
+
+```{r}
+sample <- sample_n(data, 100)
+```
+
+## EXPORT MORE INFORMATION FROM THE API ##
+
+```{r}
+# Make sample URL-s a list
+thread_urls <- sample$url
+
+# Get entire threads for the URLs
+thread_content <- get_thread_content(urls=thread_urls)
+
+# Transform nested lists into data frames 
+sample_submissions <- thread_content$threads
+sample_comments <- thread_content$comments
+
+# Merge submission data set with the existing one
+eatingdisorders_sample <- left_join(sample, sample_submissions, by="url")
+
+# Save backup file
+save.image("eatingdisorders_sample_backup_file.Rmd")
+
+# Keep the final data set
+data <- eatingdisorders_sample
+
+# Clean the global environment
+rm(sample, sample_comments, sample_submissions, thread_content, thread_urls, eatingdisorders_sample, eatingdisorders)
+```
+
+## DATA CLEANING ##
+
+```{r}
+# date time
+data$date_time <- anytime(data$timestamp.x)
+
+# check some suspicious columns
+table(data$total_awards_received)
+table(data$golds)
+# they don't have any variance
+
+# drop unnecessary columns
+colnames(data)
+data <- subset(data, select = -c(title.x, text.x, comments.x, timestamp.x, total_awards_received, golds, subreddit.x, subreddit.y))
+
+# rearrange columns
+colnames(data)
+data <- data[, c("url", "date_time", "date_utc", "author", "title.y", "text.y", "upvotes", "downvotes", "score", "up_ratio", "comments.y")]
+data <- data %>% rename("title" = "title.y", "text" = "text.y", "comments" = "comments.y")
+
+# view final data frame
+view(data)
+```
+
+## DATA EXPORT ##
+
+```{r}
+write_xlsx(data, "eatingdisorders_subreddit_sample.xlsx", col_names=TRUE)
+```
